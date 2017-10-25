@@ -24,7 +24,7 @@ class ValueColumn : public BaseColumn {
 
  protected:
   // Implementation goes here
-    std::vector<T> _values;
+  std::vector<T> _values;
 };
 
 }  // namespace opossum
