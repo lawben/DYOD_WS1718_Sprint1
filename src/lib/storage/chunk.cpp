@@ -23,9 +23,10 @@ void Chunk::append(std::vector<AllTypeVariant> values) {
   // Implementation goes here
 
   if (values.size() != this->col_count()) throw std::bad_exception();
+  DebugAssert(values.size() == this->col_count(), "invalid amount of values");
 
   // push back in all columns
-  for (int i = 0; i < static_cast<int>(values.size()); i++) {
+  for (std::size_t i = 0; i < values.size(); i++) {
     this->get_column(ColumnID{i})->append(values.at(i));
   }
 }
