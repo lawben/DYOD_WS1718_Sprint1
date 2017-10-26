@@ -19,7 +19,7 @@ void Chunk::add_column(std::shared_ptr<BaseColumn> column) {
   this->_columns.push_back(column);
 }
 
-void Chunk::append(std::vector<AllTypeVariant> values) {
+void Chunk::append(const std::vector<AllTypeVariant>& values) {
   // Implementation goes here
 
   if (values.size() != this->col_count()) throw std::bad_exception();
