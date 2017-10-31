@@ -22,13 +22,11 @@ const AllTypeVariant ValueColumn<T>::operator[](const size_t i) const {
 
 template <typename T>
 void ValueColumn<T>::append(const AllTypeVariant& val) {
-  // Implementation goes here
   this->_values.push_back(type_cast<T>(val));
 }
 
 template <typename T>
 size_t ValueColumn<T>::size() const {
-  // Implementation goes here
   return this->_values.size();
 }
 
