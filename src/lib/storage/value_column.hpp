@@ -22,8 +22,9 @@ class ValueColumn : public BaseColumn {
   // return the number of entries
   size_t size() const override;
 
+  const std::vector<T>& values() { return _values; }
+
  protected:
-  // Implementation goes here
   std::vector<T> _values;
 };
 

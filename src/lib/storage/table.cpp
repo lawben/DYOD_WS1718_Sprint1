@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "dictionary_column.hpp"
 #include "value_column.hpp"
 
 #include "resolve_type.hpp"
@@ -83,6 +84,16 @@ const Chunk& Table::get_chunk(ChunkID chunk_id) const {
   return *this->_chunks.at(chunk_id);
 }
 
-void Table::compress_chunk(ChunkID chunk_id) { throw std::runtime_error("TODO"); }
+void Table::compress_chunk(ChunkID chunk_id) {
+  const auto& uncompressed_chunk = this->get_chunk(chunk_id);
+  auto compressed_chunk = std::make_shared<Chunk>();
+
+  for (ColumnID column_id{0}; column_id < uncompressed_chunk.col_count(); ++column_id) {
+    compressed_chunk->add_column(make_shared_by_column_type<BaseColumn, DictionaryColumn>(
+        this->column_type(column_id), uncompressed_chunk.get_column(column_id)));
+  }
+
+  this->_chunks[chunk_id] = compressed_chunk;
+}
 
 }  // namespace opossum

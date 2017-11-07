@@ -46,7 +46,6 @@ class Chunk : private Noncopyable {
   std::shared_ptr<BaseColumn> get_column(ColumnID column_id) const;
 
  protected:
-  // Implementation goes here
   std::vector<std::shared_ptr<BaseColumn>> _columns;
 };
 
