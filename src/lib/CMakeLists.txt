@@ -8,6 +8,7 @@ set(
     storage/chunk.cpp
     storage/chunk.hpp
     storage/dictionary_column.hpp
+        storage/FittedAttributeVector.hpp
     storage/storage_manager.cpp
     storage/storage_manager.hpp
     storage/table.cpp
@@ -26,7 +27,7 @@ set(
 )
 
 # Configure the regular hyrise library used for tests/server/playground...
-add_library(hyrise STATIC ${SOURCES} storage/FittedAttributeVector.cpp storage/FittedAttributeVector.hpp)
+add_library(hyrise STATIC ${SOURCES})
 target_link_libraries(hyrise ${LIBRARIES})
 
 # Configure the lib used for sanitizers

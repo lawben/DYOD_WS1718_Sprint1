@@ -5,15 +5,15 @@
 namespace opossum {
 
 template <typename uintX_t>
-class FittedAttributeVector : BaseAttributeVector {
+class FittedAttributeVector : public BaseAttributeVector {
 
+ public:
   explicit FittedAttributeVector(const size_t size) : BaseAttributeVector() {
     _values.reserve(size);
   };
-  ~FittedAttributeVector() override = default;
 
   ValueID get(const size_t i) const override {
-    return _values.at(i);
+    return static_cast<ValueID>(_values.at(i));
   }
 
   // inserts the value_id at a given position
@@ -35,7 +35,7 @@ class FittedAttributeVector : BaseAttributeVector {
     return _values;
   }
 
-private:
+ private:
   std::vector<uintX_t> _values;
 
 };

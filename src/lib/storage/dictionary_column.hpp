@@ -12,7 +12,7 @@
 #include "types.hpp"
 #include "utils/assert.hpp"
 #include "value_column.hpp"
-#include "FittedAttributeVector.hpp"
+#include "fitted_attribute_vector.hpp"
 
 namespace opossum {
 
@@ -74,7 +74,7 @@ class DictionaryColumn : public BaseColumn {
   size_t size() const override;
 
  protected:
-//  std::shared_ptr<BaseAttributeVector> _get_fitted_vector(const size_t size);
+  std::shared_ptr<BaseAttributeVector> _get_fitted_vector(const size_t size);
 
   std::shared_ptr<std::vector<T>> _dictionary;
   std::shared_ptr<BaseAttributeVector> _attribute_vector;
@@ -96,24 +96,24 @@ DictionaryColumn<T>::DictionaryColumn(const std::shared_ptr<BaseColumn>& base_co
 
   _dictionary = std::make_shared<std::vector<T>>(sorted_values.begin(), unique_end);
 
-//  _attribute_vector = _get_fitted_vector(sorted_values.size());
+  _attribute_vector = _get_fitted_vector(sorted_values.size());
 
-  auto unique_count = this->dictionary()->size();
-  auto size = sorted_values.size();
+//  auto unique_count = this->dictionary()->size();
+//  auto size = sorted_values.size();
+//
+//  if (unique_count <= std::numeric_limits<uint8_t>::max()) {
+//    _attribute_vector = std::make_shared<FittedAttributeVector<uint8_t>>(size);
+//  } else if (unique_count <= std::numeric_limits<uint16_t>::max()) {
+//    _attribute_vector = std::make_shared<FittedAttributeVector<uint16_t>>(size);
+//  } else {
+//    _attribute_vector = std::make_shared<FittedAttributeVector<uint32_t>>(size);
+//  }
 
-  if (unique_count <= std::numeric_limits<uint8_t>::max()) {
-    _attribute_vector = std::make_shared<FittedAttributeVector<uint8_t>>(size);
-  } else if (unique_count <= std::numeric_limits<uint16_t>::max()) {
-    _attribute_vector = std::make_shared<FittedAttributeVector<uint16_t>>(size);
-  } else {
-    _attribute_vector = std::make_shared<FittedAttributeVector<uint32_t>>(size);
-  }
 
-
-  for (const auto& value : value_column->values()) {
-    auto dictionary_entry = std::find(_dictionary->begin(), _dictionary->end(), value);
+  for (auto row = 0u; row < sorted_values.size(); ++row) {
+    auto dictionary_entry = std::find(_dictionary->begin(), _dictionary->end(), value_column->values().at(row));
     DebugAssert(dictionary_entry != _dictionary->end(), "Value was not found in dictionary just created");
-    _attribute_vector->set(dictionary_entry - _dictionary->begin(), ValueID{value});
+    _attribute_vector->set(row, static_cast<ValueID>(dictionary_entry - _dictionary->begin()));
   }
 }
 
@@ -184,18 +184,18 @@ size_t DictionaryColumn<T>::size() const {
   return this->_attribute_vector->size();
 }
 
-//template <typename T>
-//std::shared_ptr<BaseAttributeVector> DictionaryColumn<T>::_get_fitted_vector(const size_t size) {
-//  auto unique_count = this->dictionary()->size();
-//
-//
-//  if (unique_count <= std::numeric_limits<uint8_t>::max()) {
-//    return std::make_shared<FittedAttributeVector<uint8_t>>(size);
-//  } else if (unique_count <= std::numeric_limits<uint16_t>::max()) {
-//    return std::make_shared<FittedAttributeVector<uint16_t>>(size);
-//  }
-//
-//  return std::make_shared<FittedAttributeVector<uint32_t>>(size);
-//}
+template <typename T>
+std::shared_ptr<BaseAttributeVector> DictionaryColumn<T>::_get_fitted_vector(const size_t size) {
+  auto unique_count = this->dictionary()->size();
+
+
+  if (unique_count <= std::numeric_limits<uint8_t>::max()) {
+    return std::make_shared<FittedAttributeVector<uint8_t>>(size);
+  } else if (unique_count <= std::numeric_limits<uint16_t>::max()) {
+    return std::make_shared<FittedAttributeVector<uint16_t>>(size);
+  }
+
+  return std::make_shared<FittedAttributeVector<uint32_t>>(size);
+}
 
 }  // namespace opossum

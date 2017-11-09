@@ -1,6 +1,6 @@
 
 #include <memory>
-#include <storage/FittedAttributeVector.hpp>
+#include <storage/fitted_attribute_vector.hpp>
 
 #include "../base_test.hpp"
 #include "gtest/gtest.h"
