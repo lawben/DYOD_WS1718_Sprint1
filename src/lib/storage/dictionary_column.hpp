@@ -8,11 +8,11 @@
 #include <vector>
 
 #include "all_type_variant.hpp"
+#include "fitted_attribute_vector.hpp"
 #include "type_cast.hpp"
 #include "types.hpp"
 #include "utils/assert.hpp"
 #include "value_column.hpp"
-#include "fitted_attribute_vector.hpp"
 
 namespace opossum {
 
@@ -95,20 +95,7 @@ DictionaryColumn<T>::DictionaryColumn(const std::shared_ptr<BaseColumn>& base_co
   auto unique_end = std::unique(sorted_values.begin(), sorted_values.end());
 
   _dictionary = std::make_shared<std::vector<T>>(sorted_values.begin(), unique_end);
-
   _attribute_vector = _get_fitted_vector(sorted_values.size());
-
-//  auto unique_count = this->dictionary()->size();
-//  auto size = sorted_values.size();
-//
-//  if (unique_count <= std::numeric_limits<uint8_t>::max()) {
-//    _attribute_vector = std::make_shared<FittedAttributeVector<uint8_t>>(size);
-//  } else if (unique_count <= std::numeric_limits<uint16_t>::max()) {
-//    _attribute_vector = std::make_shared<FittedAttributeVector<uint16_t>>(size);
-//  } else {
-//    _attribute_vector = std::make_shared<FittedAttributeVector<uint32_t>>(size);
-//  }
-
 
   for (auto row = 0u; row < sorted_values.size(); ++row) {
     auto dictionary_entry = std::find(_dictionary->begin(), _dictionary->end(), value_column->values().at(row));
@@ -117,19 +104,22 @@ DictionaryColumn<T>::DictionaryColumn(const std::shared_ptr<BaseColumn>& base_co
   }
 }
 
-
 template <typename T>
 const AllTypeVariant DictionaryColumn<T>::operator[](const size_t i) const {
-  return opossum::AllTypeVariant();
+  auto value_id = _attribute_vector->get(i);
+  return _dictionary->at(value_id);
 }
 
 template <typename T>
 const T DictionaryColumn<T>::get(const size_t i) const {
-  return nullptr;
+  auto value_id = _attribute_vector->get(i);
+  return _dictionary->at(value_id);
 }
 
 template <typename T>
-void DictionaryColumn<T>::append(const AllTypeVariant&) {}
+void DictionaryColumn<T>::append(const AllTypeVariant&) {
+  throw std::logic_error("Dictionary columns are immutable!");
+}
 
 template <typename T>
 std::shared_ptr<const std::vector<T>> DictionaryColumn<T>::dictionary() const {
@@ -156,8 +146,9 @@ ValueID DictionaryColumn<T>::lower_bound(const T value) const {
 
 template <typename T>
 ValueID DictionaryColumn<T>::lower_bound(const AllTypeVariant& value) const {
-  // TODO: Check if value has suitable type
-  return this->lower_bound(type_cast<T>(value));
+  auto casted_value = type_cast<T>(value);
+  DebugAssert(casted_value, "Vaue has wrong type");
+  return this->lower_bound(casted_value);
 }
 
 template <typename T>
@@ -170,8 +161,9 @@ ValueID DictionaryColumn<T>::upper_bound(const T value) const {
 
 template <typename T>
 ValueID DictionaryColumn<T>::upper_bound(const AllTypeVariant& value) const {
-  // TODO: Check if value has suitable type
-  return this->upper_bound(type_cast<T>(value));
+  auto casted_value = type_cast<T>(value);
+  DebugAssert(casted_value, "Vaue has wrong type");
+  return this->upper_bound(type_cast<T>(casted_value));
 }
 
 template <typename T>
@@ -187,7 +179,6 @@ size_t DictionaryColumn<T>::size() const {
 template <typename T>
 std::shared_ptr<BaseAttributeVector> DictionaryColumn<T>::_get_fitted_vector(const size_t size) {
   auto unique_count = this->dictionary()->size();
-
 
   if (unique_count <= std::numeric_limits<uint8_t>::max()) {
     return std::make_shared<FittedAttributeVector<uint8_t>>(size);
