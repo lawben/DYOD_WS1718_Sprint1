@@ -26,7 +26,7 @@ set(
 )
 
 # Configure the regular hyrise library used for tests/server/playground...
-add_library(hyrise STATIC ${SOURCES})
+add_library(hyrise STATIC ${SOURCES} storage/FittedAttributeVector.cpp storage/FittedAttributeVector.hpp)
 target_link_libraries(hyrise ${LIBRARIES})
 
 # Configure the lib used for sanitizers
