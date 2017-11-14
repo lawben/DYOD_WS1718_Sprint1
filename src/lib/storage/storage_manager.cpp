@@ -15,33 +15,37 @@ StorageManager& StorageManager::get() {
 }
 
 void StorageManager::add_table(const std::string& name, std::shared_ptr<Table> table) {
-  this->_tables.insert(std::make_pair(name, table));
+  if (!_tables.insert(std::make_pair(name, table)).second) {
+    throw std::logic_error("A table with the name " + name + " already exists");
+  }
 }
 
 void StorageManager::drop_table(const std::string& name) {
-  if (!this->has_table(name)) throw std::runtime_error("No such table");
-
-  this->_tables.erase(name);
+  if (_tables.erase(name) == 0) {
+    throw std::logic_error("A table with the name " + name + " doesn't exist");
+  }
 }
 
-std::shared_ptr<Table> StorageManager::get_table(const std::string& name) const { return this->_tables.at(name); }
+std::shared_ptr<Table> StorageManager::get_table(const std::string& name) const { return _tables.at(name); }
 
 bool StorageManager::has_table(const std::string& name) const {
-  return this->_tables.find(name) != this->_tables.end();
+  return _tables.find(name) != _tables.end();
 }
 
 std::vector<std::string> StorageManager::table_names() const {
   std::vector<std::string> result;
-  for (auto& table : this->_tables) {
-    result.push_back(table.first);
+  for (const auto& table : _tables) {
+    result.emplace_back(table.first);
   }
   return result;
 }
 
 void StorageManager::print(std::ostream& out) const {
-  for (auto& table : this->_tables) {
-    out << table.first << table.second->col_count() << table.second->row_count() << table.second->chunk_count()
-        << std::endl;
+  for (const auto& table : _tables) {
+    out << "Name: " << table.first << std::endl
+        << "# Columns: " << table.second->col_count() << std::endl
+        << "# Rows: " << table.second->row_count() << std::endl
+        << "# Chunks: " << table.second->chunk_count() << std::endl;
   }
 }
 

@@ -23,7 +23,6 @@ class ValueColumn : public BaseColumn {
   size_t size() const override;
 
  protected:
-  // Implementation goes here
   std::vector<T> _values;
 };
 
