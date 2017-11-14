@@ -66,9 +66,7 @@ uint64_t Table::row_count() const {
   return row_count;
 }
 
-ChunkID Table::chunk_count() const {
-  return static_cast<ChunkID>(_chunks.size());
-}
+ChunkID Table::chunk_count() const { return static_cast<ChunkID>(_chunks.size()); }
 
 ColumnID Table::column_id_by_name(const std::string& column_name) const {
   auto it = std::find(_column_names.begin(), _column_names.end(), column_name);
@@ -86,24 +84,20 @@ const std::string& Table::column_name(ColumnID column_id) const { return _column
 
 const std::string& Table::column_type(ColumnID column_id) const { return _column_types.at(column_id); }
 
-Chunk& Table::get_chunk(ChunkID chunk_id) {
-  return _chunks.at(chunk_id);
-}
+Chunk& Table::get_chunk(ChunkID chunk_id) { return _chunks.at(chunk_id); }
 
-const Chunk& Table::get_chunk(ChunkID chunk_id) const {
-  return _chunks.at(chunk_id);
-}
+const Chunk& Table::get_chunk(ChunkID chunk_id) const { return _chunks.at(chunk_id); }
 
 void Table::compress_chunk(ChunkID chunk_id) {
-  const auto& uncompressed_chunk = this->get_chunk(chunk_id);
-  auto compressed_chunk = std::make_shared<Chunk>();
+  const auto& uncompressed_chunk = get_chunk(chunk_id);
+  Chunk compressed_chunk;
 
   for (ColumnID column_id{0}; column_id < uncompressed_chunk.col_count(); ++column_id) {
-    compressed_chunk->add_column(make_shared_by_column_type<BaseColumn, DictionaryColumn>(
-        this->column_type(column_id), uncompressed_chunk.get_column(column_id)));
+    compressed_chunk.add_column(make_shared_by_column_type<BaseColumn, DictionaryColumn>(
+        column_type(column_id), uncompressed_chunk.get_column(column_id)));
   }
 
-  this->_chunks[chunk_id] = compressed_chunk;
+  _chunks[chunk_id] = std::move(compressed_chunk);
 }
 
 }  // namespace opossum

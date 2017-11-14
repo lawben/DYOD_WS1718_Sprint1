@@ -138,47 +138,47 @@ const T& DictionaryColumn<T>::value_by_value_id(ValueID value_id) const {
 
 template <typename T>
 ValueID DictionaryColumn<T>::lower_bound(const T value) const {
-  DebugAssert(this->_dictionary, "Dictionary pointer is empty");
-  auto lower_bound_it = std::lower_bound(this->_dictionary->begin(), this->_dictionary->end(), value);
-  if (lower_bound_it == this->_dictionary->end()) return INVALID_VALUE_ID;
-  return ValueID(lower_bound_it - this->_dictionary->begin());
+  DebugAssert(_dictionary, "Dictionary pointer is empty");
+  auto lower_bound_it = std::lower_bound(_dictionary->begin(), _dictionary->end(), value);
+  if (lower_bound_it == _dictionary->end()) return INVALID_VALUE_ID;
+  return ValueID(lower_bound_it - _dictionary->begin());
 }
 
 template <typename T>
 ValueID DictionaryColumn<T>::lower_bound(const AllTypeVariant& value) const {
   auto casted_value = type_cast<T>(value);
-  DebugAssert(casted_value, "Vaue has wrong type");
-  return this->lower_bound(casted_value);
+  DebugAssert(casted_value, "Value has wrong type");
+  return lower_bound(casted_value);
 }
 
 template <typename T>
 ValueID DictionaryColumn<T>::upper_bound(const T value) const {
-  DebugAssert(this->_dictionary, "Dictionary pointer is empty");
-  auto upper_bound_it = std::upper_bound(this->_dictionary->begin(), this->_dictionary->end(), value);
-  if (upper_bound_it == this->_dictionary->end()) return INVALID_VALUE_ID;
-  return ValueID(upper_bound_it - this->_dictionary->begin());
+  DebugAssert(_dictionary, "Dictionary pointer is empty");
+  auto upper_bound_it = std::upper_bound(_dictionary->begin(), _dictionary->end(), value);
+  if (upper_bound_it == _dictionary->end()) return INVALID_VALUE_ID;
+  return ValueID(upper_bound_it - _dictionary->begin());
 }
 
 template <typename T>
 ValueID DictionaryColumn<T>::upper_bound(const AllTypeVariant& value) const {
   auto casted_value = type_cast<T>(value);
-  DebugAssert(casted_value, "Vaue has wrong type");
-  return this->upper_bound(type_cast<T>(casted_value));
+  DebugAssert(casted_value, "Value has wrong type");
+  return upper_bound(type_cast<T>(casted_value));
 }
 
 template <typename T>
 size_t DictionaryColumn<T>::unique_values_count() const {
-  return this->_dictionary->size();
+  return _dictionary->size();
 }
 
 template <typename T>
 size_t DictionaryColumn<T>::size() const {
-  return this->_attribute_vector->size();
+  return _attribute_vector->size();
 }
 
 template <typename T>
 std::shared_ptr<BaseAttributeVector> DictionaryColumn<T>::_get_fitted_vector(const size_t size) {
-  auto unique_count = this->dictionary()->size();
+  auto unique_count = dictionary()->size();
 
   if (unique_count <= std::numeric_limits<uint8_t>::max()) {
     return std::make_shared<FittedAttributeVector<uint8_t>>(size);

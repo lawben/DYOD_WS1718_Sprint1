@@ -14,9 +14,7 @@
 
 namespace opossum {
 
-void Chunk::add_column(std::shared_ptr<BaseColumn> column) {
-  _columns.emplace_back(column);
-}
+void Chunk::add_column(std::shared_ptr<BaseColumn> column) { _columns.emplace_back(column); }
 
 void Chunk::append(const std::vector<AllTypeVariant>& values) {
   DebugAssert(values.size() == col_count(), "invalid amount of values");
@@ -27,13 +25,9 @@ void Chunk::append(const std::vector<AllTypeVariant>& values) {
   }
 }
 
-std::shared_ptr<BaseColumn> Chunk::get_column(ColumnID column_id) const {
-  return _columns.at(column_id);
-}
+std::shared_ptr<BaseColumn> Chunk::get_column(ColumnID column_id) const { return _columns.at(column_id); }
 
-uint16_t Chunk::col_count() const {
-  return static_cast<uint16_t>(_columns.size());
-}
+uint16_t Chunk::col_count() const { return static_cast<uint16_t>(_columns.size()); }
 
 uint32_t Chunk::size() const {
   if (col_count() == 0) {
