@@ -47,7 +47,7 @@ add_executable(hyriseTest ${HYRISE_TEST_SOURCES})
 target_link_libraries(hyriseTest hyrise ${LIBRARIES})
 
 # Configure hyriseCoverageApp
-add_executable(hyriseCoverage EXCLUDE_FROM_ALL ${HYRISE_TEST_SOURCES} storage/fitted_attribute_vector_test.cpp)
+add_executable(hyriseCoverage EXCLUDE_FROM_ALL ${HYRISE_TEST_SOURCES})
 target_link_libraries(hyriseCoverage hyriseCoverageLib ${LIBRARIES} --coverage)
 set_target_properties(hyriseCoverage PROPERTIES COMPILE_FLAGS "-fprofile-arcs -ftest-coverage")
 
