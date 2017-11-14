@@ -54,6 +54,22 @@ TEST_F(StorageDictionaryColumnTest, LowerUpperBound) {
   EXPECT_EQ(dict_col->upper_bound(15), opossum::INVALID_VALUE_ID);
 }
 
+
+TEST_F(StorageDictionaryColumnTest, LowerUpperBoundUsingAllTypeVariant) {
+  for (int i = 0; i <= 10; i += 2) vc_int->append(i);
+  auto col = opossum::make_shared_by_column_type<opossum::BaseColumn, opossum::DictionaryColumn>("int", vc_int);
+  auto dict_col = std::dynamic_pointer_cast<opossum::DictionaryColumn<int>>(col);
+
+  EXPECT_EQ(dict_col->lower_bound(opossum::AllTypeVariant(4)), (opossum::ValueID)2);
+  EXPECT_EQ(dict_col->upper_bound(opossum::AllTypeVariant(4)), (opossum::ValueID)3);
+
+  EXPECT_EQ(dict_col->lower_bound(opossum::AllTypeVariant(5)), (opossum::ValueID)3);
+  EXPECT_EQ(dict_col->upper_bound(opossum::AllTypeVariant(5)), (opossum::ValueID)3);
+
+  EXPECT_EQ(dict_col->lower_bound(opossum::AllTypeVariant(15)), opossum::INVALID_VALUE_ID);
+  EXPECT_EQ(dict_col->upper_bound(opossum::AllTypeVariant(15)), opossum::INVALID_VALUE_ID);
+}
+
 TEST_F(StorageDictionaryColumnTest, ValueByValueID) {
   for (int i = 0; i <= 10; i += 2) vc_int->append(i);
   auto col = opossum::make_shared_by_column_type<opossum::BaseColumn, opossum::DictionaryColumn>("int", vc_int);
