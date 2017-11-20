@@ -54,7 +54,6 @@ TEST_F(StorageDictionaryColumnTest, LowerUpperBound) {
   EXPECT_EQ(dict_col->upper_bound(15), opossum::INVALID_VALUE_ID);
 }
 
-
 TEST_F(StorageDictionaryColumnTest, LowerUpperBoundUsingAllTypeVariant) {
   for (int i = 0; i <= 10; i += 2) vc_int->append(i);
   auto col = opossum::make_shared_by_column_type<opossum::BaseColumn, opossum::DictionaryColumn>("int", vc_int);

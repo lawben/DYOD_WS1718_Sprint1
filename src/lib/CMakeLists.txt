@@ -5,9 +5,11 @@ set(
     resolve_type.hpp
     operators/abstract_operator.cpp
     operators/abstract_operator.hpp
+    operators/get_table.cpp
     operators/get_table.hpp
     operators/print.cpp
     operators/print.hpp
+    operators/table_scan.cpp
     operators/table_scan.hpp
     operators/table_wrapper.cpp
     operators/table_wrapper.hpp
@@ -17,6 +19,7 @@ set(
     storage/chunk.hpp
     storage/dictionary_column.hpp
     storage/fitted_attribute_vector.hpp
+    storage/reference_column.cpp
     storage/reference_column.hpp
     storage/storage_manager.cpp
     storage/storage_manager.hpp

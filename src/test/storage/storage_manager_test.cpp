@@ -57,5 +57,4 @@ TEST_F(StorageStorageManagerTest, ListTableNames) {
   EXPECT_NE(std::find(table_names.begin(), table_names.end(), "second_table"), table_names.end());
 }
 
-
 }  // namespace opossum
