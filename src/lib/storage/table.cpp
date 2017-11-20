@@ -88,6 +88,10 @@ Chunk& Table::get_chunk(ChunkID chunk_id) { return _chunks.at(chunk_id); }
 
 const Chunk& Table::get_chunk(ChunkID chunk_id) const { return _chunks.at(chunk_id); }
 
+void emplace_chunk(Chunk chunk) {
+  // Implementation goes here
+}
+
 void Table::compress_chunk(ChunkID chunk_id) {
   const auto& uncompressed_chunk = get_chunk(chunk_id);
   Chunk compressed_chunk;
