@@ -188,6 +188,9 @@ void TableScan::TableScanImpl<T>::_handle_reference_column(const TComparator com
 
   auto original_positions_it = original_positions.cbegin();
   for (auto original_chunk = ChunkID{0}; original_chunk < original_table.chunk_count(); ++original_chunk) {
+    if (original_positions_it == original_positions.cend())
+      break;
+
     if (original_positions_it->chunk_id > original_chunk)
       continue;
 
@@ -195,7 +198,8 @@ void TableScan::TableScanImpl<T>::_handle_reference_column(const TComparator com
 
     auto value_column = std::dynamic_pointer_cast<ValueColumn<T>>(original_column);
     if (value_column) {
-      for(;original_positions_it->chunk_id == original_chunk; ++original_positions_it) {
+      for(;original_positions_it->chunk_id == original_chunk
+          && original_positions_it != original_positions.cend(); ++original_positions_it) {
         if (compare(value_column->values().at(original_positions_it->chunk_offset), search_value))
           positions.emplace_back(*original_positions_it);
       }
@@ -204,10 +208,12 @@ void TableScan::TableScanImpl<T>::_handle_reference_column(const TComparator com
 
     auto dictionary_column = std::dynamic_pointer_cast<DictionaryColumn<T>>(original_column);
     if (dictionary_column) {
-      for(;original_positions_it->chunk_id == original_chunk; ++original_positions_it) {
+      for(;original_positions_it->chunk_id == original_chunk
+        && original_positions_it != original_positions.cend(); ++original_positions_it) {
         if (compare(dictionary_column->get(original_positions_it->chunk_offset), search_value))
           positions.emplace_back(*original_positions_it);
       }
+      continue;
     }
 
     throw std::logic_error("Unknown column type");
