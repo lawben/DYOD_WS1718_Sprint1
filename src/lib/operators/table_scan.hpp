@@ -6,6 +6,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <unordered_set>
 
 #include "abstract_operator.hpp"
 #include "all_type_variant.hpp"
@@ -136,14 +137,31 @@ std::shared_ptr<const Table> TableScan::TableScanImpl<T>::execute() {
 
   result_table->emplace_chunk(std::move(result_chunk));
 
-  return nullptr;
+  return result_table;
 }
 
 template <typename T>
 template <typename TComparator>
 void TableScan::TableScanImpl<T>::_handle_dictionary_column(const TComparator compare,
                                                             const DictionaryColumn<T>& column, const ChunkID chunk_id,
-                                                            const T search_value, PosList& positions) {}
+                                                            const T search_value, PosList& positions) {
+  DebugAssert(column.dictionary(), "Dictionary column's dictionary is not set");
+  const auto& dictionary_values = *column.dictionary();
+
+  std::unordered_set<std::size_t> selected_dictionary_keys;
+  selected_dictionary_keys.reserve(dictionary_values.size());
+
+  for (auto index = 0ul; index < dictionary_values.size(); ++index) {
+    if (compare(dictionary_values[index], search_value)) selected_dictionary_keys.emplace(index);
+  }
+
+  DebugAssert(column.attribute_vector(), "Dictionary column's attribute vector is not set");
+  const auto& attribute_vector = *column.attribute_vector();
+  for (auto index = ChunkOffset{0}; index < column.size(); ++index) {
+    if (selected_dictionary_keys.find(attribute_vector.get(index)) != selected_dictionary_keys.end())
+      positions.emplace_back(RowID{chunk_id, index});
+  }
+}
 
 template <typename T>
 template <typename TComparator>
@@ -161,6 +179,39 @@ template <typename T>
 template <typename TComparator>
 void TableScan::TableScanImpl<T>::_handle_reference_column(const TComparator compare, const ReferenceColumn& column,
                                                            const ChunkID chunk_id, const T search_value,
-                                                           PosList& positions) {}
+                                                           PosList& positions) {
+  DebugAssert(column.pos_list(), "Reference column's pos list is not set");
+  const auto& original_positions = *column.pos_list();
+
+  DebugAssert(column.referenced_table(), "Reference column's referenced table is not set");
+  const auto& original_table = *column.referenced_table();
+
+  auto original_positions_it = original_positions.cbegin();
+  for (auto original_chunk = ChunkID{0}; original_chunk < original_table.chunk_count(); ++original_chunk) {
+    if (original_positions_it->chunk_id > original_chunk)
+      continue;
+
+    const auto& original_column = original_table.get_chunk(original_chunk).get_column(column.referenced_column_id());
+
+    auto value_column = std::dynamic_pointer_cast<ValueColumn<T>>(original_column);
+    if (value_column) {
+      for(;original_positions_it->chunk_id == original_chunk; ++original_positions_it) {
+        if (compare(value_column->values().at(original_positions_it->chunk_offset), search_value))
+          positions.emplace_back(*original_positions_it);
+      }
+      continue;
+    }
+
+    auto dictionary_column = std::dynamic_pointer_cast<DictionaryColumn<T>>(original_column);
+    if (dictionary_column) {
+      for(;original_positions_it->chunk_id == original_chunk; ++original_positions_it) {
+        if (compare(dictionary_column->get(original_positions_it->chunk_offset), search_value))
+          positions.emplace_back(*original_positions_it);
+      }
+    }
+
+    throw std::logic_error("Unknown column type");
+  }
+}
 
 }  // namespace opossum
