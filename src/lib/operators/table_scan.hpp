@@ -4,9 +4,9 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
-#include <unordered_set>
 
 #include "abstract_operator.hpp"
 #include "all_type_variant.hpp"
@@ -102,6 +102,9 @@ std::shared_ptr<const Table> TableScan::TableScanImpl<T>::execute() {
       throw std::logic_error("Invalid scan type");
   }
 
+  auto ref_table = table;
+  auto table_changed = false;
+
   for (auto chunk_id = ChunkID{0}; chunk_id < table->chunk_count(); ++chunk_id) {
     const auto& chunk = table->get_chunk(chunk_id);
     const auto& column = chunk.get_column(_parent._column_id);
@@ -121,6 +124,11 @@ std::shared_ptr<const Table> TableScan::TableScanImpl<T>::execute() {
     auto reference_column = std::dynamic_pointer_cast<const ReferenceColumn>(column);
     if (reference_column) {
       _handle_reference_column(compare, *reference_column, chunk_id, search_value, *result_positions);
+      if (!table_changed) {
+        // Make sure we only create one new shared_ptr
+        ref_table = reference_column->referenced_table();
+        table_changed = true;
+      }
       continue;
     }
 
@@ -132,7 +140,7 @@ std::shared_ptr<const Table> TableScan::TableScanImpl<T>::execute() {
 
   for (auto column_id = ColumnID{0}; column_id < table->col_count(); ++column_id) {
     result_table->add_column_definition(table->column_name(column_id), table->column_type(column_id));
-    result_chunk.add_column(std::make_shared<ReferenceColumn>(table, column_id, result_positions));
+    result_chunk.add_column(std::make_shared<ReferenceColumn>(ref_table, column_id, result_positions));
   }
 
   result_table->emplace_chunk(std::move(result_chunk));
@@ -188,18 +196,16 @@ void TableScan::TableScanImpl<T>::_handle_reference_column(const TComparator com
 
   auto original_positions_it = original_positions.cbegin();
   for (auto original_chunk = ChunkID{0}; original_chunk < original_table.chunk_count(); ++original_chunk) {
-    if (original_positions_it == original_positions.cend())
-      break;
+    if (original_positions_it == original_positions.cend()) break;
 
-    if (original_positions_it->chunk_id > original_chunk)
-      continue;
+    if (original_positions_it->chunk_id > original_chunk) continue;
 
     const auto& original_column = original_table.get_chunk(original_chunk).get_column(column.referenced_column_id());
 
     auto value_column = std::dynamic_pointer_cast<ValueColumn<T>>(original_column);
     if (value_column) {
-      for(;original_positions_it->chunk_id == original_chunk
-          && original_positions_it != original_positions.cend(); ++original_positions_it) {
+      for (; original_positions_it->chunk_id == original_chunk && original_positions_it != original_positions.cend();
+           ++original_positions_it) {
         if (compare(value_column->values().at(original_positions_it->chunk_offset), search_value))
           positions.emplace_back(*original_positions_it);
       }
@@ -208,8 +214,8 @@ void TableScan::TableScanImpl<T>::_handle_reference_column(const TComparator com
 
     auto dictionary_column = std::dynamic_pointer_cast<DictionaryColumn<T>>(original_column);
     if (dictionary_column) {
-      for(;original_positions_it->chunk_id == original_chunk
-        && original_positions_it != original_positions.cend(); ++original_positions_it) {
+      for (; original_positions_it->chunk_id == original_chunk && original_positions_it != original_positions.cend();
+           ++original_positions_it) {
         if (compare(dictionary_column->get(original_positions_it->chunk_offset), search_value))
           positions.emplace_back(*original_positions_it);
       }
