@@ -98,8 +98,8 @@ DictionaryColumn<T>::DictionaryColumn(const std::shared_ptr<BaseColumn>& base_co
   _attribute_vector = _get_fitted_vector(sorted_values.size());
 
   for (auto row = 0u; row < sorted_values.size(); ++row) {
-    auto dictionary_entry = std::find(_dictionary->begin(), _dictionary->end(), value_column->values().at(row));
-    DebugAssert(dictionary_entry != _dictionary->end(), "Value was not found in dictionary just created");
+    auto dictionary_entry = std::lower_bound(_dictionary->begin(), _dictionary->end(), value_column->values().at(row));
+    DebugAssert(*dictionary_entry == value_column->values().at(row), "Value was not found in dictionary just created");
     _attribute_vector->set(row, static_cast<ValueID>(dictionary_entry - _dictionary->begin()));
   }
 }
