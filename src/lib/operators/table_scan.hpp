@@ -53,9 +53,8 @@ class TableScan : public AbstractOperator {
     std::shared_ptr<const Table> execute() override;
 
    protected:
-    template <typename TComparator>
-    void _handle_dictionary_column(const TComparator compare, const DictionaryColumn<T>& column, const ChunkID chunk_id,
-                                   const T search_value, PosList& positions);
+    template <ScanType TScanType>
+    void _handle_dictionary_column_for_scan_type(const std::vector<T>& dictionary_values, const BaseAttributeVector& attribute_vector, const ValueID search_value, const bool contains_value, const ChunkID chunk_id, PosList& positions);
     template <typename TComparator>
     void _handle_value_column(const TComparator compare, const ValueColumn<T>& column, const ChunkID chunk_id,
                               const T search_value, PosList& positions);
@@ -110,6 +109,38 @@ std::shared_ptr<const Table> TableScan::TableScanImpl<T>::execute() {
 
     auto dictionary_column = std::dynamic_pointer_cast<const DictionaryColumn<T>>(column);
     if (dictionary_column) {
+       DebugAssert(column.dictionary(), "Dictionary column's dictionary is not set");
+      const auto& dictionary_values = *column.dictionary();
+
+      auto value_id = dictionary_values.lower_bound(search_value);
+      auto contains_value = std::binary_search(dictionary_values.begin(), dictionary_values.end(), search_value);
+
+      DebugAssert(column.attribute_vector(), "Dictionary column's attribute vector is not set");
+      const auto& attribute_vector = *column.attribute_vector();
+
+      switch (_parent._scan_type) {
+        case ScanType::OpEquals:
+          _handle_dictionary_column_for_scan_type<ScanType::OpEquals>(dictionary_values, attribute_vector, value_id, contains_value, *result_positions);
+          break;
+        case ScanType::OpNotEquals:
+          _handle_dictionary_column_for_scan_type<ScanType::OpNotEquals>(dictionary_values, attribute_vector, value_id, contains_value, *result_positions);
+          break;
+        case ScanType::OpLessThan:
+          _handle_dictionary_column_for_scan_type<ScanType::OpLessThan>(dictionary_values, attribute_vector, value_id, contains_value, *result_positions);
+          break;
+        case ScanType::OpLessThanEquals:
+          _handle_dictionary_column_for_scan_type<ScanType::OpLessThanEquals>(dictionary_values, attribute_vector, value_id, contains_value, *result_positions);
+          break;
+        case ScanType::OpGreaterThan:
+          _handle_dictionary_column_for_scan_type<ScanType::OpGreaterThan>(dictionary_values, attribute_vector, value_id, contains_value, *result_positions);
+          break;
+        case ScanType::OpGreaterThanEquals:
+          _handle_dictionary_column_for_scan_type<ScanType::OpGreaterThanEquals>(dictionary_values, attribute_vector, value_id, contains_value, *result_positions);
+          break;
+        default:
+          throw std::logic_error("Invalid scan type");
+      }
+
       _handle_dictionary_column(compare, *dictionary_column, chunk_id, search_value, *result_positions);
       continue;
     }
@@ -148,24 +179,71 @@ std::shared_ptr<const Table> TableScan::TableScanImpl<T>::execute() {
 }
 
 template <typename T>
-template <typename TComparator>
-void TableScan::TableScanImpl<T>::_handle_dictionary_column(const TComparator compare,
-                                                            const DictionaryColumn<T>& column, const ChunkID chunk_id,
-                                                            const T search_value, PosList& positions) {
-  DebugAssert(column.dictionary(), "Dictionary column's dictionary is not set");
-  const auto& dictionary_values = *column.dictionary();
+void TableScan::TableScanImpl<T>::_handle_dictionary_column_for_scan_type<ScanType::OpEquals>(
+  const std::vector<T>& dictionary_values, const BaseAttributeVector& attribute_vector, const ValueID search_value, const bool contains_value, const ChunkID chunk_id, PosList& positions) {
+  if (!contains_value)
+    return;
 
-  std::unordered_set<std::size_t> selected_dictionary_keys;
-  selected_dictionary_keys.reserve(dictionary_values.size());
-
-  for (auto index = 0ul; index < dictionary_values.size(); ++index) {
-    if (compare(dictionary_values[index], search_value)) selected_dictionary_keys.emplace(index);
+  for (auto index = ChunkOffset{0}; index < attribute_vector.size(); ++index) {
+    if (attribute_vector.get(index) == search_value)
+      positions.emplace_back(RowID{chunk_id, index});
   }
+}
 
-  DebugAssert(column.attribute_vector(), "Dictionary column's attribute vector is not set");
-  const auto& attribute_vector = *column.attribute_vector();
-  for (auto index = ChunkOffset{0}; index < column.size(); ++index) {
-    if (selected_dictionary_keys.find(attribute_vector.get(index)) != selected_dictionary_keys.end())
+template <typename T>
+void TableScan::TableScanImpl<T>::_handle_dictionary_column_for_scan_type<ScanType::OpNotEquals>(
+  const std::vector<T>& dictionary_values, const BaseAttributeVector& attribute_vector, const ValueID search_value, const bool contains_value, const ChunkID chunk_id, PosList& positions) {
+  if (!contains_value) {
+    // Insert everything
+    for (auto index = ChunkOffset{0}; index < attribute_vector.size(); ++index) {
+        positions.emplace_back(RowID{chunk_id, index});
+    }
+  } else {
+    for (auto index = ChunkOffset{0}; index < attribute_vector.size(); ++index) {
+      if (attribute_vector.get(index) != search_value)
+        positions.emplace_back(RowID{chunk_id, index});
+    }
+  }
+}
+
+template <typename T>
+void TableScan::TableScanImpl<T>::_handle_dictionary_column_for_scan_type<ScanType::OpGreaterThan>(
+  const std::vector<T>& dictionary_values, const BaseAttributeVector& attribute_vector, const ValueID search_value, const bool contains_value, const ChunkID chunk_id, PosList& positions) {
+  if (!contains_value)
+    return _handle_dictionary_column_for_scan_type<ScanType::OpGreaterThanEquals>(dictionary_values, attribute_vector, search_value, true, positions);
+
+  for (auto index = ChunkOffset{0}; index < attribute_vector.size(); ++index) {
+    if (attribute_vector.get(index) > search_value)
+      positions.emplace_back(RowID{chunk_id, index});
+  }
+}
+
+template <typename T>
+void TableScan::TableScanImpl<T>::_handle_dictionary_column_for_scan_type<ScanType::OpGreaterThanEquals>(
+  const std::vector<T>& dictionary_values, const BaseAttributeVector& attribute_vector, const ValueID search_value, const bool contains_value, const ChunkID chunk_id, PosList& positions) {
+  for (auto index = ChunkOffset{0}; index < attribute_vector.size(); ++index) {
+    if (attribute_vector.get(index) >= search_value)
+      positions.emplace_back(RowID{chunk_id, index});
+  }
+}
+
+template <typename T>
+void TableScan::TableScanImpl<T>::_handle_dictionary_column_for_scan_type<ScanType::OpLessThan>(
+  const std::vector<T>& dictionary_values, const BaseAttributeVector& attribute_vector, const ValueID search_value, const bool contains_value, const ChunkID chunk_id, PosList& positions) {
+  for (auto index = ChunkOffset{0}; index < attribute_vector.size(); ++index) {
+    if (attribute_vector.get(index) < search_value)
+      positions.emplace_back(RowID{chunk_id, index});
+  }
+}
+
+template <typename T>
+void TableScan::TableScanImpl<T>::_handle_dictionary_column_for_scan_type<ScanType::OpLessThanEquals>(
+  const std::vector<T>& dictionary_values, const BaseAttributeVector& attribute_vector, const ValueID search_value, const bool contains_value, const ChunkID chunk_id, PosList& positions) {
+  if (!contains_value)
+    return _handle_dictionary_column_for_scan_type<ScanType::OpLessThan>(dictionary_values, attribute_vector, search_value, true, positions);
+
+  for (auto index = ChunkOffset{0}; index < attribute_vector.size(); ++index) {
+    if (attribute_vector.get(index) <= search_value)
       positions.emplace_back(RowID{chunk_id, index});
   }
 }
