@@ -11,7 +11,6 @@
 
 namespace opossum {
 
-class BaseTableScanImpl;
 class Table;
 
 class TableScan : public AbstractOperator {

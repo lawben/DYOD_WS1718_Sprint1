@@ -182,7 +182,7 @@ std::shared_ptr<BaseAttributeVector> DictionaryColumn<T>::_get_fitted_vector(con
 
   if (unique_count < std::numeric_limits<uint8_t>::max()) {
     return std::make_shared<FittedAttributeVector<uint8_t>>(size);
-  } else if (unique_count <= std::numeric_limits<uint16_t>::max()) {
+  } else if (unique_count < std::numeric_limits<uint16_t>::max()) {
     return std::make_shared<FittedAttributeVector<uint16_t>>(size);
   }
 
