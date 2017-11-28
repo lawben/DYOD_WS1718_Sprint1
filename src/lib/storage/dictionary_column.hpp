@@ -180,7 +180,7 @@ template <typename T>
 std::shared_ptr<BaseAttributeVector> DictionaryColumn<T>::_get_fitted_vector(const size_t size) {
   auto unique_count = dictionary()->size();
 
-  if (unique_count <= std::numeric_limits<uint8_t>::max()) {
+  if (unique_count < std::numeric_limits<uint8_t>::max()) {
     return std::make_shared<FittedAttributeVector<uint8_t>>(size);
   } else if (unique_count <= std::numeric_limits<uint16_t>::max()) {
     return std::make_shared<FittedAttributeVector<uint16_t>>(size);
