@@ -194,7 +194,9 @@ void TableScanDispatcher<T>::_execute_scan_on_dictionary_column(const Dictionary
   DebugAssert(dictionary_column.dictionary(), "Dictionary column's dictionary is not set");
   const auto& dictionary_values = *dictionary_column.dictionary();
 
-  auto contains_value = dictionary_values[lower_bound] == search_value;
+  // TODO: We urgently need to fix handling of lower_bound = INVALID_VALUE_ID
+
+  auto contains_value = lower_bound != INVALID_VALUE_ID && dictionary_values[lower_bound] == search_value;
 
   auto small_attribute_vector =
       std::dynamic_pointer_cast<const FittedAttributeVector<uint8_t>>(dictionary_column.attribute_vector());
