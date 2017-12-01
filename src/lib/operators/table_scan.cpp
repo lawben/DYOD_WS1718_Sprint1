@@ -77,6 +77,8 @@ class TableScanImpl {
   struct TableScanContext {
     const std::vector<T>& attribute_vector;
     const T search_value;
+    // contains_value is similiar to Bloom-Filter logic -> false if not contained and true means it could be or not.
+    // This allows for optimisations when we definitely know a value is not present.
     const bool contains_value;
     const ChunkID chunk_id;
     std::optional<PosListContext> pos_list_context;
