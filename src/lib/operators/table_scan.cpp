@@ -211,6 +211,7 @@ void TableScanDispatcher<T>::_execute_scan_on_value_column(const ValueColumn<T>&
                                                            PosList& positions,
                                                            std::optional<PosListContext> pos_list_context) {
   TableScanImpl<T> scan;
+  // We set contains_value to true because we have no way of knowing whether it is in or not, so we cannot optimise.
   scan.perform_scan(scan_type, chunk_id, value_column.values(), search_value, positions, true, pos_list_context);
 }
 
