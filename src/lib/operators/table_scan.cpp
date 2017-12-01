@@ -3,6 +3,7 @@
 #include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "resolve_type.hpp"
 #include "storage/dictionary_column.hpp"
@@ -14,26 +15,32 @@
 
 namespace opossum {
 
-// The table scan is implemented on different column types
-// and different operator types in a two-step process.
-//
-// Firstly, the TableScanDispatcher determines the incoming column types
-// and extracts the raw search values and attribute vectors.
-//
-// In the second step, the actual table scan implementation invokes the correct
-// comparison operator and optionally takes the provided position list into account
-// when scanning the attribute vector.
+/**
+ * The table scan is implemented on different column types and different operator types in a two-step process.
+ *
+ * Firstly, the TableScanDispatcher determines the incoming column types and extracts the raw search values and
+ * attribute vectors.
+ *
+ * In the second step, the actual table scan implementation invokes the correct comparison operator and optionally
+ * takes the provided position list into account when scanning the attribute vector.
+ */
 
+// Helper struct used to handle the original column pointed to by a ReferenceColumn.
 struct PosListContext {
   PosList::const_iterator& position_iterator;
   const PosList::const_iterator& position_end;
 };
 
+// Abstract class needed for templated subclasses
 class AbstractTableScanDispatcher {
  public:
   virtual std::shared_ptr<const Table> execute(const std::shared_ptr<const AbstractOperator> in_operator) = 0;
 };
 
+/**
+ * Determines the incoming column types and extracts the raw search values (and attribute vectors).
+ * Then it passes the relevant information for each column type to the TableScanImpl, which performs the actual scan.
+ */
 template <typename T>
 class TableScanDispatcher : public AbstractTableScanDispatcher {
  public:
@@ -54,6 +61,10 @@ class TableScanDispatcher : public AbstractTableScanDispatcher {
                                          const T search_value, PosList& positions);
 };
 
+/**
+ * Invokes the correct comparison operator and optionally takes the provided position list into account when scanning
+ * the attribute vector. All results are written to the argument 'positons'.
+ */
 template <typename T>
 class TableScanImpl {
  public:
@@ -62,6 +73,7 @@ class TableScanImpl {
                     std::optional<PosListContext> pos_list_context);
 
  protected:
+  // Helper struct to reduce the number of arguments arguments in the comparison methods.
   struct TableScanContext {
     const std::vector<T>& attribute_vector;
     const T search_value;
@@ -70,12 +82,23 @@ class TableScanImpl {
     std::optional<PosListContext> pos_list_context;
   };
 
+  // Methods where we need to catch edge cases or can optimise.
   void _execute_equals_scan(const TableScanContext& context, PosList& positions);
   void _execute_not_equal_scan(const TableScanContext& context, PosList& positions);
   void _execute_greater_than_scan(const TableScanContext& context, PosList& positions);
-  void _execute_greater_than_equals_scan(const TableScanContext& context, PosList& positions);
-  void _execute_less_than_scan(const TableScanContext& context, PosList& positions);
   void _execute_less_than_equals_scan(const TableScanContext& context, PosList& positions);
+
+  // Decides whether to call __compare_referenced_column or _compare_column depending on if the vector is referenced.
+  template <typename Comparator>
+  void _execute_compare_scan(const TableScanContext& context, PosList& positions, Comparator compare);
+
+  // Compare all values in a vector referenced by a ReferenceColumn to context.search_value with compare
+  template <typename Comparator>
+  void _compare_referenced_column(const TableScanContext& context, PosList& positions, Comparator compare);
+
+  // Compare all values in a vector to context.search_value with compare
+  template <typename Comparator>
+  void _compare_column(const TableScanContext& context, PosList& positions, Comparator compare);
 };
 
 template <typename T>
@@ -85,15 +108,17 @@ std::shared_ptr<const Table> TableScanDispatcher<T>::execute(
     throw std::logic_error("Unknown column data type provided");
   }
 
-  auto search_value = type_cast<T>(_parent.search_value());
-  auto scan_type = _parent.scan_type();
+  const auto search_value = type_cast<T>(_parent.search_value());
+  const auto scan_type = _parent.scan_type();
 
   const auto& table = in_operator->get_output();
   auto result_positions = std::make_shared<PosList>();
 
+  // ref_table changes when dealing with a ReferenceColmn, as we want to point to the original table
   auto ref_table = table;
   auto table_changed = false;
 
+  // For each Chunk, check whether it is a Value-, Dictionary-, or ReferenceColumn
   for (auto chunk_id = ChunkID{0}; chunk_id < table->chunk_count(); ++chunk_id) {
     const auto& chunk = table->get_chunk(chunk_id);
     const auto& column = chunk.get_column(_parent.column_id());
@@ -128,13 +153,13 @@ std::shared_ptr<const Table> TableScanDispatcher<T>::execute(
   auto result_table = std::make_shared<Table>();
   Chunk result_chunk;
 
+  // Fill the result table
   for (auto column_id = ColumnID{0}; column_id < table->col_count(); ++column_id) {
     result_table->add_column_definition(table->column_name(column_id), table->column_type(column_id));
     result_chunk.add_column(std::make_shared<ReferenceColumn>(ref_table, column_id, result_positions));
   }
 
   result_table->emplace_chunk(std::move(result_chunk));
-
   return result_table;
 }
 
@@ -145,26 +170,29 @@ void TableScanDispatcher<T>::_execute_scan_on_reference_column(const ReferenceCo
   DebugAssert(reference_column.pos_list(), "Reference column's pos list is not set");
   const auto& original_positions = *reference_column.pos_list();
 
-  if (original_positions.size() == 0) return;
+  if (original_positions.empty()) return;
 
   DebugAssert(reference_column.referenced_table(), "Reference column's referenced table is not set");
   const auto& original_table = *reference_column.referenced_table();
 
   // We assume that the chunk_ids of positions are always in order.
-
   auto positions_it = original_positions.cbegin();
   for (auto chunk_id = ChunkID{0}; chunk_id < original_table.chunk_count(); ++chunk_id) {
     const auto& original_column =
         original_table.get_chunk(chunk_id).get_column(reference_column.referenced_column_id());
     PosListContext pos_list_context = {positions_it, original_positions.cend()};
 
-    auto value_column = std::dynamic_pointer_cast<ValueColumn<T>>(original_column);
+    // If the ReferenceColumn points to a ValueColumn, perform the ValueColumn scan on the original with a PosList to
+    // determine which values are relevant for the scan.
+    const auto value_column = std::dynamic_pointer_cast<ValueColumn<T>>(original_column);
     if (value_column) {
       _execute_scan_on_value_column(*value_column, scan_type, chunk_id, search_value, positions, pos_list_context);
       continue;
     }
 
-    auto dictionary_column = std::dynamic_pointer_cast<DictionaryColumn<T>>(original_column);
+    // If the ReferenceColumn points to a DictionaryColumn, perform the DictionaryColumn scan on the original with a
+    // PosList to determine which values are relevant for the scan.
+    const auto dictionary_column = std::dynamic_pointer_cast<DictionaryColumn<T>>(original_column);
     if (dictionary_column) {
       _execute_scan_on_dictionary_column(*dictionary_column, scan_type, chunk_id, search_value, positions,
                                          pos_list_context);
@@ -189,16 +217,16 @@ void TableScanDispatcher<T>::_execute_scan_on_dictionary_column(const Dictionary
                                                                 const ScanType scan_type, const ChunkID chunk_id,
                                                                 const T search_value, PosList& positions,
                                                                 std::optional<PosListContext> pos_list_context) {
-  auto lower_bound = dictionary_column.lower_bound(search_value);
+  const auto lower_bound = dictionary_column.lower_bound(search_value);
 
   DebugAssert(dictionary_column.dictionary(), "Dictionary column's dictionary is not set");
   const auto& dictionary_values = *dictionary_column.dictionary();
 
-  // TODO: We urgently need to fix handling of lower_bound = INVALID_VALUE_ID
+  const auto contains_value = lower_bound != INVALID_VALUE_ID && dictionary_values[lower_bound] == search_value;
 
-  auto contains_value = lower_bound != INVALID_VALUE_ID && dictionary_values[lower_bound] == search_value;
-
-  auto small_attribute_vector =
+  // Determine which size attribute vector we have and run the scan on the correct type to avoid virtual calls for
+  // each value access to BaseAtributeVector.
+  const auto small_attribute_vector =
       std::dynamic_pointer_cast<const FittedAttributeVector<uint8_t>>(dictionary_column.attribute_vector());
   if (small_attribute_vector) {
     TableScanImpl<uint8_t> scan;
@@ -207,7 +235,7 @@ void TableScanDispatcher<T>::_execute_scan_on_dictionary_column(const Dictionary
     return;
   }
 
-  auto medium_attribute_vector =
+  const auto medium_attribute_vector =
       std::dynamic_pointer_cast<const FittedAttributeVector<uint16_t>>(dictionary_column.attribute_vector());
   if (medium_attribute_vector) {
     TableScanImpl<uint16_t> scan;
@@ -216,7 +244,7 @@ void TableScanDispatcher<T>::_execute_scan_on_dictionary_column(const Dictionary
     return;
   }
 
-  auto large_attribute_vector =
+  const auto large_attribute_vector =
       std::dynamic_pointer_cast<const FittedAttributeVector<uint32_t>>(dictionary_column.attribute_vector());
   if (large_attribute_vector) {
     TableScanImpl<uint32_t> scan;
@@ -234,53 +262,46 @@ void TableScanImpl<T>::perform_scan(const ScanType scan_type, const ChunkID chun
                                     const bool contains_value, std::optional<PosListContext> pos_list_context) {
   TableScanContext context = {attribute_vector, search_value, contains_value, chunk_id, pos_list_context};
 
+  // Some special methods are called if there are edge cases or optimisations possible.
+  // Else, default back to comapring with a lamdba.
   switch (scan_type) {
     case ScanType::OpEquals:
-      _execute_equals_scan(context, positions);
-      break;
+      return _execute_equals_scan(context, positions);
     case ScanType::OpNotEquals:
-      _execute_not_equal_scan(context, positions);
-      break;
-    case ScanType::OpLessThan:
-      _execute_less_than_scan(context, positions);
-      break;
+      return _execute_not_equal_scan(context, positions);
+    case ScanType::OpLessThan: {
+      auto lt = [](const T& val, const T& search_val) { return val < search_val; };
+      return _execute_compare_scan(context, positions, lt);
+    }
     case ScanType::OpLessThanEquals:
-      _execute_less_than_equals_scan(context, positions);
-      break;
+      return _execute_less_than_equals_scan(context, positions);
     case ScanType::OpGreaterThan:
-      _execute_greater_than_scan(context, positions);
-      break;
-    case ScanType::OpGreaterThanEquals:
-      _execute_greater_than_equals_scan(context, positions);
-      break;
+      return _execute_greater_than_scan(context, positions);
+    case ScanType::OpGreaterThanEquals: {
+      auto geq = [](const T& val, const T& search_val) { return val >= search_val; };
+      return _execute_compare_scan(context, positions, geq);
+    }
+    default:
+      throw std::logic_error("Unknown ScanType provided.");
   }
 }
 
 template <typename T>
 void TableScanImpl<T>::_execute_equals_scan(const TableScanContext& context, PosList& positions) {
+  // No value will match, so we can exit early
   if (!context.contains_value) return;
 
-  if (context.pos_list_context) {
-    auto& pos_it = context.pos_list_context.value().position_iterator;
-    const auto& pos_end = context.pos_list_context.value().position_end;
-    for (; pos_it != pos_end && pos_it->chunk_id == context.chunk_id; ++pos_it) {
-      const auto& offset = pos_it->chunk_offset;
-      if (context.attribute_vector[offset] == context.search_value)
-        positions.emplace_back(RowID{context.chunk_id, offset});
-    }
-  } else {
-    for (auto index = ChunkOffset{0}; index < context.attribute_vector.size(); ++index) {
-      if (context.attribute_vector[index] == context.search_value)
-        positions.emplace_back(RowID{context.chunk_id, index});
-    }
-  }
+  // Compare all values
+  auto compare = [](const T& val, const T& search_val) { return val == search_val; };
+  return _execute_compare_scan(context, positions, compare);
 }
 
 template <typename T>
 void TableScanImpl<T>::_execute_not_equal_scan(const TableScanContext& context, PosList& positions) {
   if (!context.contains_value) {
+    // All values match, so we don't need to compare and can insert all values directly
     if (context.pos_list_context) {
-      // Insert all previously selected positions
+      // Insert all previously selected positions from referencing ReferenceColumn
       auto& pos_it = context.pos_list_context.value().position_iterator;
       const auto& pos_end = context.pos_list_context.value().position_end;
       for (; pos_it != pos_end && pos_it->chunk_id == context.chunk_id; ++pos_it) {
@@ -294,106 +315,78 @@ void TableScanImpl<T>::_execute_not_equal_scan(const TableScanContext& context, 
       }
     }
   } else {
-    if (context.pos_list_context) {
-      auto& pos_it = context.pos_list_context.value().position_iterator;
-      const auto& pos_end = context.pos_list_context.value().position_end;
-      for (; pos_it != pos_end && pos_it->chunk_id == context.chunk_id; ++pos_it) {
-        const auto& offset = pos_it->chunk_offset;
-        if (context.attribute_vector[offset] != context.search_value)
-          positions.emplace_back(RowID{context.chunk_id, offset});
-      }
-    } else {
-      for (auto index = ChunkOffset{0}; index < context.attribute_vector.size(); ++index) {
-        if (context.attribute_vector[index] != context.search_value)
-          positions.emplace_back(RowID{context.chunk_id, index});
-      }
-    }
+    // Value is in vector, so we need to compare each value
+    auto compare = [](const T& val, const T& search_val) { return val != search_val; };
+    _execute_compare_scan(context, positions, compare);
   }
 }
 
 template <typename T>
 void TableScanImpl<T>::_execute_greater_than_scan(const TableScanContext& context, PosList& positions) {
   if (!context.contains_value) {
+    // We are using lower bound to find the value, so if it is not contained, we need all values that are greater or
+    // equal to the first larger value in the vector.
     // Make a copy of the context with contains_value = true
     TableScanContext greater_than_equals_context = {context.attribute_vector, context.search_value, true,
                                                     context.chunk_id, context.pos_list_context};
-    return _execute_greater_than_equals_scan(greater_than_equals_context, positions);
+    auto compare = [](const T& val, const T& search_val) { return val >= search_val; };
+    return _execute_compare_scan(greater_than_equals_context, positions, compare);
   }
 
-  if (context.pos_list_context) {
-    auto& pos_it = context.pos_list_context.value().position_iterator;
-    const auto& pos_end = context.pos_list_context.value().position_end;
-    for (; pos_it != pos_end && pos_it->chunk_id == context.chunk_id; ++pos_it) {
-      const auto& offset = pos_it->chunk_offset;
-      if (context.attribute_vector[offset] > context.search_value)
-        positions.emplace_back(RowID{context.chunk_id, offset});
-    }
-  } else {
-    for (auto index = ChunkOffset{0}; index < context.attribute_vector.size(); ++index) {
-      if (context.attribute_vector[index] > context.search_value)
-        positions.emplace_back(RowID{context.chunk_id, index});
-    }
-  }
-}
-
-template <typename T>
-void TableScanImpl<T>::_execute_greater_than_equals_scan(const TableScanContext& context, PosList& positions) {
-  if (context.pos_list_context) {
-    auto& pos_it = context.pos_list_context.value().position_iterator;
-    const auto& pos_end = context.pos_list_context.value().position_end;
-    for (; pos_it != pos_end && pos_it->chunk_id == context.chunk_id; ++pos_it) {
-      const auto& offset = pos_it->chunk_offset;
-      if (context.attribute_vector[offset] >= context.search_value)
-        positions.emplace_back(RowID{context.chunk_id, offset});
-    }
-  } else {
-    for (auto index = ChunkOffset{0}; index < context.attribute_vector.size(); ++index) {
-      if (context.attribute_vector[index] >= context.search_value)
-        positions.emplace_back(RowID{context.chunk_id, index});
-    }
-  }
-}
-
-template <typename T>
-void TableScanImpl<T>::_execute_less_than_scan(const TableScanContext& context, PosList& positions) {
-  if (context.pos_list_context) {
-    auto& pos_it = context.pos_list_context.value().position_iterator;
-    const auto& pos_end = context.pos_list_context.value().position_end;
-    for (; pos_it != pos_end && pos_it->chunk_id == context.chunk_id; ++pos_it) {
-      const auto& offset = pos_it->chunk_offset;
-      if (context.attribute_vector[offset] < context.search_value)
-        positions.emplace_back(RowID{context.chunk_id, offset});
-    }
-  } else {
-    for (auto index = ChunkOffset{0}; index < context.attribute_vector.size(); ++index) {
-      if (context.attribute_vector[index] < context.search_value)
-        positions.emplace_back(RowID{context.chunk_id, index});
-    }
-  }
+  // Compare all values
+  auto compare = [](const T& val, const T& search_val) { return val > search_val; };
+  return _execute_compare_scan(context, positions, compare);
 }
 
 template <typename T>
 void TableScanImpl<T>::_execute_less_than_equals_scan(const TableScanContext& context, PosList& positions) {
   if (!context.contains_value) {
+    // We are using lower bound to find the value, so if it is not contained, we need all values that are less than
+    // the first larger value in the vector.
     // Make a copy of the context with contains_value = true
     TableScanContext less_than_context = {context.attribute_vector, context.search_value, true, context.chunk_id,
                                           context.pos_list_context};
-    return _execute_less_than_scan(less_than_context, positions);
+    auto compare = [](const T& val, const T& search_val) { return val < search_val; };
+    return _execute_compare_scan(less_than_context, positions, compare);
   }
 
+  // Compare all values
+  auto compare = [](const T& val, const T& search_val) { return val <= search_val; };
+  return _execute_compare_scan(context, positions, compare);
+}
+
+template <typename T>
+template <typename Comparator>
+void TableScanImpl<T>::_execute_compare_scan(const TableScanContext& context, PosList& positions, Comparator compare) {
   if (context.pos_list_context) {
-    auto& pos_it = context.pos_list_context.value().position_iterator;
-    const auto& pos_end = context.pos_list_context.value().position_end;
-    for (; pos_it != pos_end && pos_it->chunk_id == context.chunk_id; ++pos_it) {
-      const auto& offset = pos_it->chunk_offset;
-      if (context.attribute_vector[offset] <= context.search_value)
-        positions.emplace_back(RowID{context.chunk_id, offset});
-    }
+    _compare_referenced_column(context, positions, compare);
   } else {
-    for (auto index = ChunkOffset{0}; index < context.attribute_vector.size(); ++index) {
-      if (context.attribute_vector[index] <= context.search_value)
-        positions.emplace_back(RowID{context.chunk_id, index});
-    }
+    _compare_column(context, positions, compare);
+  }
+}
+
+template <typename T>
+template <typename Comparator>
+void TableScanImpl<T>::_compare_referenced_column(const TableScanImpl::TableScanContext& context, PosList& positions,
+                                                  Comparator compare) {
+  // Only look at values that were referenced
+  auto& pos_it = context.pos_list_context.value().position_iterator;
+  const auto& pos_end = context.pos_list_context.value().position_end;
+  for (; pos_it != pos_end && pos_it->chunk_id == context.chunk_id; ++pos_it) {
+    const auto& offset = pos_it->chunk_offset;
+    if (compare(context.attribute_vector[offset], context.search_value))
+      positions.emplace_back(RowID{context.chunk_id, offset});
+  }
+}
+
+template <typename T>
+template <typename Comparator>
+void TableScanImpl<T>::_compare_column(const TableScanImpl::TableScanContext& context, PosList& positions,
+                                       Comparator compare) {
+  // Look at all values
+  for (auto index = ChunkOffset{0}; index < context.attribute_vector.size(); ++index) {
+    if (compare(context.attribute_vector[index], context.search_value))
+      positions.emplace_back(RowID{context.chunk_id, index});
   }
 }
 
