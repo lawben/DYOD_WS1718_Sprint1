@@ -12,6 +12,7 @@
 #include "type_cast.hpp"
 #include "types.hpp"
 #include "utils/assert.hpp"
+#include "utils/performance_warning.hpp"
 #include "value_column.hpp"
 
 namespace opossum {
@@ -74,7 +75,7 @@ class DictionaryColumn : public BaseColumn {
   size_t size() const override;
 
  protected:
-  std::shared_ptr<BaseAttributeVector> _get_fitted_vector(const size_t size);
+  std::shared_ptr<BaseAttributeVector> _create_fitted_vector(const size_t size);
 
   std::shared_ptr<std::vector<T>> _dictionary;
   std::shared_ptr<BaseAttributeVector> _attribute_vector;
@@ -87,25 +88,28 @@ DictionaryColumn<T>::DictionaryColumn(const std::shared_ptr<BaseColumn>& base_co
 
   const auto value_column = std::dynamic_pointer_cast<ValueColumn<T>>(base_column);
 
-  DebugAssert(value_column, "Bad value column provided");
+  Assert(value_column, "Bad column type provided");
 
-  auto sorted_values = value_column->values();
-  std::sort(sorted_values.begin(), sorted_values.end());
+  const auto& values = value_column->values();
+  _dictionary = std::make_shared<std::vector<T>>(values.begin(), values.end());
+  std::sort(_dictionary->begin(), _dictionary->end());
 
-  auto unique_end = std::unique(sorted_values.begin(), sorted_values.end());
+  const auto unique_end = std::unique(_dictionary->begin(), _dictionary->end());
+  const auto new_size = std::distance(_dictionary->begin(), unique_end);
 
-  _dictionary = std::make_shared<std::vector<T>>(sorted_values.begin(), unique_end);
-  _attribute_vector = _get_fitted_vector(sorted_values.size());
+  _dictionary->resize(new_size);
+  _attribute_vector = _create_fitted_vector(values.size());
 
-  for (auto row = 0u; row < sorted_values.size(); ++row) {
-    auto dictionary_entry = std::lower_bound(_dictionary->begin(), _dictionary->end(), value_column->values().at(row));
-    DebugAssert(*dictionary_entry == value_column->values().at(row), "Value was not found in dictionary just created");
+  for (auto row = 0u; row < values.size(); ++row) {
+    const auto dictionary_entry = std::lower_bound(_dictionary->begin(), _dictionary->end(), values[row]);
+    DebugAssert(*dictionary_entry == values[row], "Value was not found in dictionary just created");
     _attribute_vector->set(row, static_cast<ValueID>(dictionary_entry - _dictionary->begin()));
   }
 }
 
 template <typename T>
 const AllTypeVariant DictionaryColumn<T>::operator[](const size_t i) const {
+  PerformanceWarning("operator[] used");
   auto value_id = _attribute_vector->get(i);
   return _dictionary->at(value_id);
 }
@@ -147,7 +151,6 @@ ValueID DictionaryColumn<T>::lower_bound(const T value) const {
 template <typename T>
 ValueID DictionaryColumn<T>::lower_bound(const AllTypeVariant& value) const {
   auto casted_value = type_cast<T>(value);
-  DebugAssert(casted_value, "Value has wrong type");
   return lower_bound(casted_value);
 }
 
@@ -162,7 +165,6 @@ ValueID DictionaryColumn<T>::upper_bound(const T value) const {
 template <typename T>
 ValueID DictionaryColumn<T>::upper_bound(const AllTypeVariant& value) const {
   auto casted_value = type_cast<T>(value);
-  DebugAssert(casted_value, "Value has wrong type");
   return upper_bound(type_cast<T>(casted_value));
 }
 
@@ -177,7 +179,7 @@ size_t DictionaryColumn<T>::size() const {
 }
 
 template <typename T>
-std::shared_ptr<BaseAttributeVector> DictionaryColumn<T>::_get_fitted_vector(const size_t size) {
+std::shared_ptr<BaseAttributeVector> DictionaryColumn<T>::_create_fitted_vector(const size_t size) {
   auto unique_count = dictionary()->size();
 
   if (unique_count < std::numeric_limits<uint8_t>::max()) {
@@ -186,6 +188,7 @@ std::shared_ptr<BaseAttributeVector> DictionaryColumn<T>::_get_fitted_vector(con
     return std::make_shared<FittedAttributeVector<uint16_t>>(size);
   }
 
+  Assert(unique_count < std::numeric_limits<uint32_t>::max(), "Too many unique values (> 2^32)");
   return std::make_shared<FittedAttributeVector<uint32_t>>(size);
 }
 
