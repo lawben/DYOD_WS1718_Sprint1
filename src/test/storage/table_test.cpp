@@ -8,7 +8,9 @@
 #include "gtest/gtest.h"
 
 #include "../lib/resolve_type.hpp"
+#include "../lib/storage/dictionary_column.hpp"
 #include "../lib/storage/table.hpp"
+#include "../lib/types.hpp"
 
 namespace opossum {
 
@@ -72,10 +74,23 @@ TEST_F(StorageTableTest, GetColumnIdByName) {
 TEST_F(StorageTableTest, GetChunkSize) { EXPECT_EQ(t.chunk_size(), 2u); }
 
 TEST_F(StorageTableTest, CompressChunk) {
-  t.append({4, "Hello,"});
-  t.append({6, "world"});
+  t.append({6, "Hello,"});
+  t.append({4, "world"});
 
-  EXPECT_NO_THROW(t.compress_chunk(ChunkID{0}));
+  t.compress_chunk(ChunkID{0});
+
+  const auto& chunk = t.get_chunk(ChunkID{0});
+  const auto col = chunk.get_column(ColumnID{0});
+  const auto dict_col = std::dynamic_pointer_cast<DictionaryColumn<int>>(col);
+
+  EXPECT_NE(dict_col, nullptr);
+  EXPECT_EQ(dict_col->dictionary()->size(), 2ul);
+  EXPECT_EQ(dict_col->dictionary()->at(0), 4);
+  EXPECT_EQ(dict_col->dictionary()->at(1), 6);
+
+  EXPECT_EQ(dict_col->attribute_vector()->size(), 2ul);
+  EXPECT_EQ(dict_col->attribute_vector()->get(0), static_cast<ValueID>(1));
+  EXPECT_EQ(dict_col->attribute_vector()->get(1), static_cast<ValueID>(0));
 }
 
 }  // namespace opossum
