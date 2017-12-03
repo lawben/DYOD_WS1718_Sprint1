@@ -116,7 +116,7 @@ std::shared_ptr<const Table> TableScanDispatcher<T>::execute(
   const auto& table = in_operator->get_output();
   auto result_positions = std::make_shared<PosList>();
 
-  // ref_table changes when dealing with a ReferenceColmn, as we want to point to the original table
+  // ref_table changes when dealing with a ReferenceColumn, as we want to point to the original table
   auto ref_table = table;
   auto table_changed = false;
 
@@ -228,7 +228,7 @@ void TableScanDispatcher<T>::_execute_scan_on_dictionary_column(const Dictionary
   const auto contains_value = lower_bound != INVALID_VALUE_ID && dictionary_values[lower_bound] == search_value;
 
   // Determine which size attribute vector we have and run the scan on the correct type to avoid virtual calls for
-  // each value access to BaseAtributeVector.
+  // each value access to BaseAttributeVector.
   const auto small_attribute_vector =
       std::dynamic_pointer_cast<const FittedAttributeVector<uint8_t>>(dictionary_column.attribute_vector());
   if (small_attribute_vector) {
@@ -266,7 +266,7 @@ void TableScanImpl<T>::perform_scan(const ScanType scan_type, const ChunkID chun
   TableScanContext context = {attribute_vector, search_value, contains_value, chunk_id, pos_list_context};
 
   // Some special methods are called if there are edge cases or optimisations possible.
-  // Else, default back to comapring with a lamdba.
+  // Else, default back to comparing with a lambda.
   switch (scan_type) {
     case ScanType::OpEquals:
       return _execute_equals_scan(context, positions);

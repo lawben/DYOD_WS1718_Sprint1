@@ -91,7 +91,7 @@ DictionaryColumn<T>::DictionaryColumn(const std::shared_ptr<BaseColumn>& base_co
   Assert(value_column, "Bad column type provided");
 
   const auto& values = value_column->values();
-  _dictionary = std::make_shared<std::vector<T>>(values.begin(), values.end());
+  _dictionary = std::make_shared<std::vector<T>>(values.cbegin(), values.cend());
   std::sort(_dictionary->begin(), _dictionary->end());
 
   const auto unique_end = std::unique(_dictionary->begin(), _dictionary->end());

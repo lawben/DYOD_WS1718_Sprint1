@@ -16,7 +16,6 @@ static std::shared_ptr<opossum::TableWrapper> create_table(size_t chunks, size_t
 
   for (auto chunk_id = opossum::ChunkID{0}; chunk_id < chunks; ++chunk_id) {
     // Create an int column
-    // TODO: Create some sort of normal distribution
 
     auto int_column = std::make_shared<opossum::ValueColumn<int32_t>>();
     for (auto row = 0ul; row < rows_per_chunk; ++row) {
