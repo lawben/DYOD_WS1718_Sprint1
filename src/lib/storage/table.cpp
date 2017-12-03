@@ -88,6 +88,14 @@ Chunk& Table::get_chunk(ChunkID chunk_id) { return _chunks.at(chunk_id); }
 
 const Chunk& Table::get_chunk(ChunkID chunk_id) const { return _chunks.at(chunk_id); }
 
+void Table::emplace_chunk(Chunk chunk) {
+  if (row_count() == 0) {
+    std::swap(_chunks[0], chunk);
+  } else {
+    _chunks.emplace_back(std::move(chunk));
+  }
+}
+
 void Table::compress_chunk(ChunkID chunk_id) {
   const auto& uncompressed_chunk = get_chunk(chunk_id);
   Chunk compressed_chunk;

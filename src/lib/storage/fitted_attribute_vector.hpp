@@ -23,6 +23,7 @@ class FittedAttributeVector : public BaseAttributeVector {
   AttributeVectorWidth width() const override { return sizeof(uintX_t); }
 
   std::vector<uintX_t>& values() { return _values; }
+  const std::vector<uintX_t>& values() const { return _values; }
 
  private:
   std::vector<uintX_t> _values;
